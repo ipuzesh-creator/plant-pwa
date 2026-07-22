@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>مدیریت هوشمند گیاهان</title>
+  <link rel="manifest" href="manifest.json">
+  <style>
+    :root {
+      --bg-color: #0b141a;
+      --card-bg: #111b21;
+      --accent: #00a884;
+      --danger: #ea4335;
+      --text: #e9edef;
+      --subtext: #8696a0;
+      --border: #222d34;
+    }
+    body {
+      margin: 0;
+      font-family: Tahoma, sans-serif;
+      background-color: var(--bg-color);
+      color: var(--text);
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+    }
+    header {
+      background-color: var(--card-bg);
+      padding: 15px;
+      text-align: center;
+      font-weight: bold;
+      border-bottom: 1px solid var(--border);
+    }
+    .main-content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 15px;
+      padding-bottom: 70px;
+    }
+    .page { display: none; }
+    .page.active { display: block; }
+    
+    .search-box, .input-field {
+      width: 100%;
+      padding: 10px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--card-bg);
+      color: var(--text);
+      box-sizing: border-box;
+      margin-top: 5px;
+      margin-bottom: 10px;
+    }
+
+    .plant-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+      gap: 15px;
+    }
+    .plant-card {
+      background: var(--card-bg);
+      border-radius: 12px;
+      padding: 10px;
+      border: 1px solid var(--border);
+      text-align: center;
+      cursor: pointer;
+    }
+    .plant-card img {
+      width: 100%;
+      height: 100px;
+      object-fit: cover;
+      border-radius: 8px;
+    }
+    .plant-card h4 { margin: 8px 0 4px 0; }
+    .plant-card p { margin: 0; color: var(--subtext); font-size: 0.8em; }
+
+    .control-group {
+      background: var(--card-bg);
+      padding: 15px;
+      border-radius: 12px;
+      margin-bottom: 15px;
+      border: 1px solid var(--border);
+    }
+    .btn {
+      background: var(--accent);
+      color: white;
+      border: none;
+      padding: 10px 15px;
+      border-radius: 6px;
+      width: 100%;
+      cursor: pointer;
+      font-weight: bold;
+      margin-top: 10px;
+    }
+    .btn-danger {
+      background: var(--danger);
+      margin-top: 0;
+    }
+
+    .details-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 15px;
+    }
+
+    nav {
+      position: fixed;
+      bottom: 0;
+      width: 100%;
+      background-color: var(--card-bg);
+      display: flex;
+      justify-content: space-around;
+      padding: 10px 0;
+      border-top: 1px solid var(--border);
+    }
+    nav button {
+      background: none;
+      border: none;
+      color: var(--subtext);
+      font-size: 0.9em;
+      cursor: pointer;
+    }
+    nav button.active { color: var(--accent); font-weight: bold; }
+
+    .status-badge {
+      display: inline-block;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 0.8em;
+      margin-top: 5px;
+    }
+    .sync-ok { background: #1b4332; color: #75eb9e; }
+    .sync-err { background: #4a151b; color: #ff8a8a; }
+  </style>
+</head>
+<body>
+
+  <header id="header-title">خانه (گیاهان من)</header>
+
+  <div class="main-content">
+    
+    <!-- ۱. صفحه خانه -->
+    <div id="home-page" class="page active">
+      <div id="my-plants-list" class="plant-grid"></div>
+      <div id="empty-state" style="text-align:center; color: var(--subtext); margin-top: 40px;">
+        هیچ گیاهی اضافه نشده است.<br>از بخش «افزودن گیاه» اولین گیاه خود را اضافه کنید.
+      </div>
+    </div>
+
+    <!-- ۲. صفحه جستجو و افزودن -->
+    <div id="add-page" class="page">
+      <input type="text" id="search-input" class="search-box" placeholder="جستجوی نام گیاه..." onkeyup="filterPlants()">
+      <div id="all-plants-list" class="plant-grid"></div>
+    </div>
+
+    <!-- ۳. صفحه اختصاصی تنظیمات و کنترل گیاه -->
+    <div id="details-page" class="page">
+      <div class="details-header">
+        <button onclick="navTo('home-page', 'خانه (گیاهان من)')" style="background:none; border:none; color:var(--accent); cursor:pointer; font-size: 1em;">← بازگشت</button>
+        <button id="delete-plant-btn" class="btn btn-danger" style="width: auto; padding: 6px 12px; font-size: 0.85em;">🗑️ حذف گیاه</button>
+      </div>
+
+      <h2 id="detail-plant-name">نام گیاه</h2>
+      <div id="sync-status" class="status-badge sync-err">در حال دریافت داده از سخت‌افزار...</div>
+      <img id="detail-plant-img" src="" style="width:100%; height:160px; object-fit:cover; border-radius:12px; margin: 15px 0;">
+      
+      <!-- وضعیت سنسورها -->
+      <div class="control-group">
+        <h3>📊 وضعیت زنده (ESP8266)</h3>
+        <p>رطوبت فعلی خاک: <b id="val-moisture">--٪</b></p>
+        <p>دما: <b id="val-temp">--°C</b></p>
+        <p>آدرس دیوایس: <small id="val-ip">تنظیم‌نشده</small></p>
+      </div>
+
+      <!-- تنظیمات آبیاری سینک شده با ESP8266 -->
+      <div class="control-group">
+        <h3>💧 تنظیمات آبیاری سخت‌افزار</h3>
+        
+        <label>حالت آبیاری:</label>
+        <select id="irrigation-mode" class="input-field" onchange="handleModeChange(this.value)">
+          <option value="auto">خودکار (بر اساس سنسور رطوبت)</option>
+          <option value="manual">دستی (فرمان مستقیم)</option>
+        </select>
+
+        <!-- بخش تنظیمات اتوماتیک -->
+        <div id="auto-settings-sec" style="margin-top: 10px;">
+          <label>حداقل رطوبت برای شروع آبیاری (درصد):</label>
+          <input type="number" id="cfg-threshold" class="input-field" min="0" max="100" placeholder="مثلا ۳۰">
+        </div>
+
+        <!-- بخش تنظیمات دستی -->
+        <div id="manual-settings-sec" style="margin-top: 10px;">
+          <label>مدت زمان روشن بودن پمپ (ثانیه):</label>
+          <input type="number" id="cfg-duration" class="input-field" min="1" max="60" placeholder="مثلا ۵">
+          
+          <button id="btn-trigger-pump" class="btn" style="background:#0284c7;" onclick="triggerPump()">⚙️ روشن کردن لحظه‌ای پمپ</button>
+        </div>
+
+        <button class="btn" onclick="saveConfigToESP()">💾 ذخیره تنظیمات روی دیوایس</button>
+      </div>
+
+      <!-- تنظیمات نور و کوددهی (اطلاعات مرجع) -->
+      <div class="control-group">
+        <h3>☀️ راهنمای نگهداری گیاه</h3>
+        <p id="detail-light-info">--</p>
+        <p id="detail-fertilizer-info">--</p>
+      </div>
+    </div>
+
+    <!-- ۴. صفحه تنظیمات عمومی -->
+    <div id="settings-page" class="page">
+      <h3>تنظیمات شبکه</h3>
+      <p style="color:var(--subtext); font-size:0.9em;">تنظیمات کلی برنامه در این بخش قرار می‌گیرد.</p>
+    </div>
+
+  </div>
+
+  <nav>
+    <button id="nav-home" class="active" onclick="navTo('home-page', 'خانه (گیاهان من)')">🌱 خانه</button>
+    <button id="nav-add" onclick="navTo('add-page', 'بانک گیاهان و افزودن')">➕ افزودن گیاه</button>
+    <button id="nav-settings" onclick="navTo('settings-page', 'تنظیمات')">⚙️ تنظیمات</button>
+  </nav>
+
+  <script>
+    const plantDatabase = [
+      { id: 'monstera', name: 'مونسترا (برگ انجیری)', img: 'images/monstera.jpg', light: 'نور متوسط تا زیاد غیرمستقیم', fert: 'ماهی یک‌بار در فصل رشد' },
+      { id: 'sansevieria', name: 'سانسوریا', img: 'images/sansevieria.jpg', light: 'کم‌نور تا نور زیاد', fert: 'هر ماه یک‌بار در بهار' },
+      { id: 'pothos', name: 'پتوس', img: 'images/pothos.jpg', light: 'نور متوسط سایه-آفتاب', fert: 'هر دو هفته یک‌بار' },
+      { id: 'zz-plant', name: 'زاموفیلیا', img: 'images/zz-plant.jpg', light: 'مقاوم به کم‌نوری', fert: 'هر ۳ ماه یک‌بار' },
+      { id: 'fiddle-leaf', name: 'فیکوس آفریقایی', img: 'images/fiddle-leaf.jpg', light: 'نور کاملاً روشن و غیرمستقیم', fert: 'ماهی یک‌بار' }
+    ];
+
+    let myPlants = JSON.parse(localStorage.getItem('myPlants')) || [];
+    let currentPlantIndex = null;
+
+    function init() {
+      renderAllPlants();
+      renderMyPlants();
+    }
+
+    function renderAllPlants() {
+      const list = document.getElementById('all-plants-list');
+      list.innerHTML = '';
+      plantDatabase.forEach(plant => {
+        list.innerHTML += `
+          <div class="plant-card">
+            <img src="${plant.img}" alt="${plant.name}">
+            <h4>${plant.name}</h4>
+            <button class="btn" onclick="addPlantToHome('${plant.id}')">➕ افزودن به خانه</button>
+          </div>
+        `;
+      });
+    }
+
+    function renderMyPlants() {
+      const list = document.getElementById('my-plants-list');
+      const emptyState = document.getElementById('empty-state');
+      list.innerHTML = '';
+
+      if (myPlants.length === 0) {
+        emptyState.style.display = 'block';
+        return;
+      }
+      emptyState.style.display = 'none';
+
+      myPlants.forEach((plant, index) => {
+        list.innerHTML += `
+          <div class="plant-card" onclick="openPlantDetails(${index})">
+            <img src="${plant.img}" alt="${plant.name}">
+            <h4>${plant.name}</h4>
+            <p>IP: ${plant.ip || 'تنظیم نشده'}</p>
+          </div>
+        `;
+      });
+    }
+
+    function addPlantToHome(plantId) {
+      const plant = plantDatabase.find(p => p.id === plantId);
+      const espIp = prompt("آدرس IP یا شناسه سخت‌افزار (ESP8266) متصل به این گیاه را وارد کنید:", "192.168.1.50");
+      
+      if (espIp) {
+        myPlants.push({ ...plant, ip: espIp });
+        localStorage.setItem('myPlants', JSON.stringify(myPlants));
+        renderMyPlants();
+        navTo('home-page', 'خانه (گیاهان من)');
+      }
+    }
+
+    function openPlantDetails(index) {
+      currentPlantIndex = index;
+      const plant = myPlants[index];
+      if (!plant) return;
+
+      document.getElementById('detail-plant-name').innerText = plant.name;
+      document.getElementById('detail-plant-img').src = plant.img;
+      document.getElementById('detail-light-info').innerText = "💡 نور مناسب: " + plant.light;
+      document.getElementById('detail-fertilizer-info').innerText = "🧪 کوددهی: " + plant.fert;
+      document.getElementById('val-ip').innerText = plant.ip;
+
+      document.getElementById('delete-plant-btn').onclick = function() {
+        removePlantFromHome(index);
+      };
+
+      // دریافت مستقیم تنظیمات و وضعیت از خود ESP8266
+      fetchDeviceConfigAndStatus(plant.ip);
+
+      navTo('details-page', plant.name);
+    }
+
+    // 🔄 ۱. دریافت تنظیمات از سخت‌افزار به محض ورود به صفحه
+    function fetchDeviceConfigAndStatus(ip) {
+      const badge = document.getElementById('sync-status');
+      badge.className = "status-badge sync-err";
+      badge.innerText = "در حال دریافت داده از سخت‌افزار...";
+
+      // دریافت وضعیت سنسورها + تنظیمات ذخیره شده روی ESP
+      fetch(`http://${ip}/api/config`)
+        .then(res => res.json())
+        .then(data => {
+          // data شامل: { mode: "auto", threshold: 30, duration: 5, moisture: 45, temp: 24 }
+          document.getElementById('irrigation-mode').value = data.mode || 'auto';
+          document.getElementById('cfg-threshold').value = data.threshold || 30;
+          document.getElementById('cfg-duration').value = data.duration || 5;
+          document.getElementById('val-moisture').innerText = (data.moisture !== undefined ? data.moisture : '--') + '%';
+          document.getElementById('val-temp').innerText = (data.temp !== undefined ? data.temp : '--') + '°C';
+
+          handleModeChange(data.mode || 'auto');
+
+          badge.className = "status-badge sync-ok";
+          badge.innerText = "🟢 همگام‌شده با سخت‌افزار";
+        })
+        .catch(err => {
+          console.error(err);
+          badge.className = "status-badge sync-err";
+          badge.innerText = "🔴 عدم اتصال به سخت‌افزار (بررسی IP)";
+        });
+    }
+
+    // 💾 ۲. ارسال تنظیمات جدید به سخت‌افزار جهت ذخیره در EEPROM
+    function saveConfigToESP() {
+      const plant = myPlants[currentPlantIndex];
+      if (!plant) return;
+
+      const payload = {
+        mode: document.getElementById('irrigation-mode').value,
+        threshold: parseInt(document.getElementById('cfg-threshold').value),
+        duration: parseInt(document.getElementById('cfg-duration').value)
+      };
+
+      fetch(`http://${plant.ip}/api/config`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      })
+      .then(res => {
+        if(res.ok) alert('تنظیمات با موفقیت روی سخت‌افزار ذخیره شد!');
+        else alert('خطا در ذخیره تنظیمات روی دیوایس');
+      })
+      .catch(err => alert('خطا در ارتباط با دیوایس: ' + err.message));
+    }
+
+    function handleModeChange(mode) {
+      const isAuto = mode === 'auto';
+      document.getElementById('cfg-threshold').disabled = !isAuto;
+      document.getElementById('cfg-duration').disabled = isAuto;
+      document.getElementById('btn-trigger-pump').style.display = isAuto ? 'none' : 'block';
+    }
+
+    function triggerPump() {
+      const plant = myPlants[currentPlantIndex];
+      const duration = document.getElementById('cfg-duration').value;
+      
+      fetch(`http://${plant.ip}/api/pump`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ duration: parseInt(duration) })
+      })
+      .then(() => alert('دستور پمپ ارسال شد'))
+      .catch(() => alert('خطا در ارسال فرمان'));
+    }
+
+    function removePlantFromHome(index) {
+      if (confirm(`آیا از حذف این گیاه اطمینان دارید؟`)) {
+        myPlants.splice(index, 1);
+        localStorage.setItem('myPlants', JSON.stringify(myPlants));
+        renderMyPlants();
+        navTo('home-page', 'خانه (گیاهان من)');
+      }
+    }
+
+    function filterPlants() {
+      const query = document.getElementById('search-input').value.toLowerCase();
+      const cards = document.getElementById('all-plants-list').getElementsByClassName('plant-card');
+      Array.from(cards).forEach(card => {
+        const title = card.querySelector('h4').innerText.toLowerCase();
+        card.style.display = title.includes(query) ? 'block' : 'none';
+      });
+    }
+
+    function navTo(pageId, title) {
+      document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+      document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+      
+      document.getElementById(pageId).classList.add('active');
+      document.getElementById('header-title').innerText = title;
+
+      if (pageId === 'home-page') document.getElementById('nav-home').classList.add('active');
+      if (pageId === 'add-page') document.getElementById('nav-add').classList.add('active');
+      if (pageId === 'settings-page') document.getElementById('nav-settings').classList.add('active');
+    }
+
+    init();
+  </script>
+</body>
+</html>
